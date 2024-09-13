@@ -264,9 +264,335 @@ Redis (Remote Dictionary Server)；一个开源的 key-value 存储系统；它�
   - count>0 从表头开始向表尾搜索，移除与参数相等的元素，数量为 count；
   - count<0 从表尾开始向表头搜索，移除与参数相等的元素，数量为 count 的绝对值；
 - lset < key> < index> < element>：设置给定素引位置的值；
-- ltrim < key> < start> < stop>：对列表进行修剪，只保留给定区间的元素，不在指定区间的被删除；
+- ltrim < key> < start> < stop>：对列表进行修剪，只保留给定区间的元素，不在指定区间的被删除；（包含端点）
+- brpop < key> < timeout>：阻塞式移除指定 key 的元素，如果 key 中没有元素，就等待，直到有元素或超时，执行结束；
 
 ### （3）应用场景 ❤️
+
+1. 数据队列
+
+   > - 堆栈：stack = lpush + lpop
+   > - 队列：queue = lpush + rpop
+   > - 阻塞式消息队列：block_mq = lpush + brpop
+   >
+2. 订阅号时间线
+
+   > lrange key start stop
+   >
+
+## 3. Hash 哈希
+
+### （1）简介
+
+是一个 string 类型的键和 value(对象)，特别适合于存储对象，类似于 java 里面学习的 Map <String, Object>；
+
+> 假设场景: 需要在 redis 中存储学生对象，对象属性包括(id,name,gender,age)，有以下几种处理方式：
+>
+> - 方式一: 用 key 存储学生id，用 value 存储序列化之后用户对象 (如果用户属性数据需要修改，操作较复杂，开销较大)；
+> - 方式二: 用 key 存储学生 id:属性名，用 value 存储属性值 (用户 id 数据冗余)；stu001:id 001 / stu001:name zhangsan；
+> - 方式三: 用 key 存储学生 id，用 value 存储 field + value 的 hash；:star: 通过 key(学生id) + field(属性) 可以操作对应数据；
+
+![image.png](assets/image31.png)
+
+### （2）常用命令
+
+- hset < key> < field> < value>[< field> < value>...]：用于为哈希表中的字段赋值，如果字段在 hash 表中存在，则会被覆盖；
+
+![image.png](assets/image32.png)
+
+- hget < key> < field>：返回哈希表中指定的字段的值；
+- hmget < key> < field> [< field> < field>...]：获取哈希表中所有给定的字段值；
+
+![image.png](assets/image33.png)
+
+- hgetall < key>: 获取在哈希表中指定 key 的所有字段和值；
+
+![image.png](assets/image34.png)
+
+- hsetnx < key> < field> < value>：只有在字段不存在时，才设置哈希表字段中的值；
+- hmset: 用法同 hset，在 redis4.0 中被弃用；
+- hexists < key> < field>：判断哈希表中指定的字段是否存在，存在返回1，否则返回0；
+- hkeys < key>：获取哈希表中所有的字段；
+- hvals < key>：获取哈希表中所有的值；
+- hlen < key>: 获取哈希表中的 field 数量；
+- hdel < key> < field> [< field>...]：删除一个或多个哈希表字段；
+- hincrby < key> < fied>< increment>：为哈希表 key 中指定的 field 字段的整数值加上增加 increment（整数值,可以是负数）；
+- hincrbyfloat < key>< field> < increment>：为哈希表 key 中指定的 field 字段的**浮点数**值加上增加 increment（浮点数,可以是负数）；
+
+### （3）应用场景
+
+1. 对象缓存：hset stu:001 name zhangsan age 20 gender man；
+2. 电商购物车操作：
+
+   > 以用户 id 作为 key，以商品 id 作为 field，以商品数量作为 value
+   >
+   > - 添加商品:
+   >   - hset user:001 s:001 1
+   >   - hset user:001 s:002 2
+   > - 增减商品数量: hincrby user:001 s:001 3
+   > - 查看购物车商品总数: hlen user:001
+   > - 删除商品: hdel user:001 s:001
+   > - 获取所有商品: hgetall user:001
+   >
+
+## 4. Set 集合
+
+set 是 string 类型元素无序集合，对外提供的功能和 list 类似，是一个列表功能；集合成员是唯一的；
+
+### （1）常用命令
+
+- sadd < key> < member> [< member>..]：将一个或多个成员元素加入到集合中，如果集合中已经包含成员元素，则被忽略；
+- smembers < key>：返回集合中的所有成员；
+
+![image.png](assets/image35.png)
+
+- sismember < key> < member>：判断给定的成员元素是否在集合中存在，如果存在返回 1，否则返回 0；
+- scard < key>: 返回集合中元素个数；
+- srem < key>< member>[< member>...]：移除集合中一个或多个元素；
+- spop < key> [< count>]：移除并返回集合中的一个或 count 个随机元素；
+- srandmember < key> [< count>]：与 spop 相似，返回随机元素，不做移除；
+- smove < source> < destination> < member>：将 member 元素从 source 源移动到 destinatlon 目标；
+- sinter < key> [< key>...]：返回给定集合的交集(共同包含)元素；
+
+![image.png](assets/image25.png)
+
+- sinterstore < destination> < key1> [< key2>...]：返回给定所有集合的交集，并存储到 destination 目标中；
+
+![image.png](assets/image36.png)
+
+- sunion < key> [< key>...]：返回给定集合的并集(所有)元素；
+- sunionstore < destination> < key1> [< key2>...]：返回给定所有集合的并集，并存储到 destination 目标中；
+- sdiff < key> [< key>...]：返回给定集合的差集(key1中不包含在key2中的元素)；
+- sdiffstore < destination><key1>[< key2>...]：返回给定所有集合的差集，并存储到 destination 目标中；
+
+### （2）应用场景
+
+1. 抽奖
+
+   > - 参与抽奖: sadd cj001 user:13000000000 user:13455556666 user:13566667777
+   > - 查看所有参与用户: smembers cj001
+   > - 实现抽奖：spop cj0013 / srandmember cj001 3
+   >
+2. 朋友圈点赞
+
+   > - 点赞
+   >   - sadd like:friend001 user:001
+   >   - sadd like:friend001 user:002
+   > - 取消点赞 srem like:friend001 user:001
+   > - 判断用户是否已点赞 sismember like:friend001 user:001
+   > - 显示点赞用户 smembers like:friend001
+   > - 获取点赞次数 scard like:friend001
+   >
+3. 关注模型：sinter 交集 sunion 并集 sdiff 差集
+
+   > - 微博 sadd g:list:u001 1001 sadd g:list:u002 1001 你们共同关注的 sinter交集
+   > - QQ 你们有共同好友 sinter交集
+   > - 快手 可能认识的人 sdiff差集
+   >
+
+## 5. ZSet 有序集合
+
+### （1）简介
+
+- 有序集合是 string 类型元素的集合，不允许重复出现成员；
+- 每个元素会关联一个 double 类型的分数，redis 是通过分数为集合中的成员进行从小到大的排序；
+- 有序集合的成员是唯一的，但是分数可以重复；
+- 成员因为有序，可以根据分数或者次序来快速获取一个范围内的元素；
+
+### （2）常用命令
+
+- zadd < key> < score> < member>[< score>< member>...]：将一个或多个元素及其分数加入到有序集合中；
+- zrange < key>< min>< max> [byscore | bylex] [rev] [ limit offset count] [withscores]：返回有序集合指定区间的成员，(byscore 按分数区间，bylex 按字典区间，rev 反向排序(分数大的写前边，小的写后边)，limit分页(offset 偏移量，count返回的总数)，withscores 返回时带有对应的分数)；
+- zrevrange < key> < start> < stop> [ limit offset count]：返回集合反转后的成员
+- zrangebyscore < key> < min> < max> [withscores] [ limit offset count]：参考 zrange 用法；
+- zrevrangebyscore < key>< max>< min> [withscores] [limit offset count]：参考zrange用法
+- zrangebylex < key> < min> < max> [limit offset count：通过字典区间返回有序集合的成员；
+  - zrangebylex k2 - + ：减号最小值，加号最大值；
+  - zrangebylex k2 [aa (ac：[ 中括号表示包含给定值，( 小括号表示不包含给定值；
+
+![image.png](assets/image37.png)
+
+- zcard < key>：获取集合中的成员数量；
+- zincrby < key> < increment> < member>：为集合中指定成员分数加上增量 icrement；
+- zrem < key> < member> [< member>...]：移除集合的一个或多个成员；
+- zcount < key> < min> < max>：统计集合中指定区间分数(都包含)的成员数量；
+- zrank < key> < member>：获取集合中成员的索引位置；
+- zscore < key> < member>：获取集合中成员的分数值；
+
+### （3）应用场景
+
+1. 按时间先后顺序排序: 朋友圈点赞 zadd 1656667779666
+2. 热搜 微博 今日头条 快手
+3. 获取 topN zrevrange k1 300 10 limit 0 10
+
+# 三、Redis 持久化
+
+- 目前，redis 的持久化主要应用 AOF(Append Only File) 和 RDB (Redis Database Backup) 两大机制；
+- AOF 以日志的形式来记录每个写操作 (增量保存)，将 redis 执行过的所有（正确的）写指令全部记录下来 (读操作不记录)；
+- 只许追加文件，但不可以改写文件；
+- redis 启动之初会读取该文件，进行重新构建数据；
+
+## 1. AOF
+
+### （1）开启 aof
+
+- AOF 默认不开启，在 conf 配置文件中进行配置；
+
+![image.png](assets/image39.png)
+
+![image.png](assets/image40.png)
+
+- 重新启动
+
+![image.png](assets/image41.png)
+
+> - 默认文件名是 appendonly.aof；
+> - 默认是启动后的相对路径，redis 在哪里启动，appendonly.ao f文件就在哪生成；
+
+### （2）AOF 日志是如何实现的
+
+#### a. 为什么使用 AOF 日志？
+
+1️⃣ **WAL**：数据库写前日志 (Write Ahead Log)，在实际写数据库前，先把修改的数据记录到日志文件中，以便发生故障时，及时恢复；
+
+2️⃣ **AOF**：数据库写后日志，redis 先去执行命令，把数据写入内存中，然后才去记录日志；
+
+![image.png](assets/image42.png)
+
+
+
+> ⭐️ .aof 文件中的保存内容
+>
+> ![image.png](assets/image44.png)
+
+> ❤️ redis 为什么使用写后日志AOF？
+>
+> 1. 避免检查开销：向AOF中记录日志，是不做检查的,如果写前执行，很有可能将错误指令记录到日志中，在使用 redis 恢复日志时，就可能会出现错误;
+>    > 先执行后记录，只有执行成功的指令才会被记录，以免在恢复数据的时候引入错误指令；（错误指令不会被记录，读取操作不被记录）
+>    >
+> 2. 不会阻塞当前的写操作
+
+#### b. AOF 日志有什么风险？:heart:
+
+![image.png](assets/image46.png)
+
+1. .aof 文件可能由于异常原因被损坏，可以使用 redis 自带的命令 `redis-check-aof --fix appendonly.aof` 文件，修复成功则可以正确启动；
+2. 由于刚刚执行一个指令，还没有写入日志，就宕机了。就会导致数据永久丢失 (redis 做为数据库存储的情况下)；
+3. AOF 避免了对当前指令的阻塞，但可能会由于磁盘写入压力较大，对下一个操作带来阻塞风险；
+
+### （3）AOF 日志三种写回策略
+
+配置 conf 文件：
+
+![image.png](assets/image49.png)
+
+1. aways：同步写回，每个写指令执行完，立即同步将指令写入磁盘日志文件中；
+2. everysec：每秒写回，默认配置方式。每个写指令执行完，先把日志写到AOF文件的内存缓冲区，每隔一秒把缓冲区的内容写入磁盘；
+3. no：操作系统控制写回，每个写指令执行完，先把日志写到 AOF 文件的内存缓冲区，由操作系统决定何时把缓区的内容写入磁盘；
+
+![image.png](assets/image50.png?t=1726217060715)
+
+### （4）AOF 日志重写机制
+
+> - 由于服务器资源有限，appendonly.aof 的文件大小随着使用不断增加，需要对其进行重写，降低资源占用；
+> - 根据 appendonly.aof，将数据重新写入内存，出现类似于进栈/出栈的操作，需要重写 .aof 文件，只要写入最后结果的命令
+
+Redis 根据数据库现有数据，创建一个新的 AOF 文件，读取数据库中所有键值对，重新对应一条命令写入。可以使用命令 `bgreWriteaof`，（ 在 redis-cli 环境执行）
+
+#### a. AOF 重写相关配置
+
+配置 conf 文件：
+
+![image.png](assets/image51.png)
+
+> 例如 文件 80m，开如重写，重写后降到 50m，下一次，达到 100m 再开始重写；
+
+
+#### b. AOF 重写流程
+
+- bgrewirteaof 触发重写，判断是否当前有重写在运行，如果有，则等待重写结束后再执行；
+- 主进程 fork 出一个子进程，执行重写操作，保证主进程不阻塞，可以继续执行命令；
+- 子进程循环遍历 reids 内存中的所有数据到临时文件，客户端的写请求同时写入 aof 缓冲区和 aof 重写缓冲区保证原 AOF 文件完整以及新的 AOF 文件生成期间的新的数据修改操作不会丢失；
+- 子进程写完新 AOF 文件以后，向主进程发送信号，主进程更新统计信息；
+- 主进程把 aof 重写缓冲区中的数据写入到新的 AOF 文件用新 AOF 文件覆盖掉旧的 AOF 文件，完成 AOF 重写；
+
+![image.png](assets/image52.png)
+
+
+## 2. RDB
+
+由于 Redis 是单线程的，所以要避免使得主线程阻塞的操作；
+
+> - RDB：（Redis DataBase）内存快照，记录内存中某一时刻数据的状态；
+> - RDB 和 AOF 相比，RDB记录的是数据，不是操作指令；
+> - redis 提供了两个命令生成 RDB 文件：
+>   - save: 在主线程中执行，会导致阻塞；
+>   - bgsave: 创建一个子进程，专门用来写 RDB，避免主线程阻塞，默认配置；
+
+- 使用 RDB
+
+![image.png](assets/image54.png)
+
+### （1）写时复制技术
+
+> 例: 6GB内存数据量，磁盘的写入 0.3GB/S，需要 20S 时间，来完成 RDB 文件的写入?
+>
+> 处理技术：写时复制技术 (copy-on-write cow)，在执行快照处理时，仍然正确执行写入操作；
+
+![image.png](assets/image53.png?t=1726222268804)
+
+
+### （2）快照频率
+
+配置 conf 文件，修改快照频率；
+
+![image.png](assets/image55.png)
+
+- 全量快照 & 增量快照
+- 混合使用 AOF & RDB
+
+### （3）混合应用 AOF & RDB
+
+1. 通过 redis.conf 配置文件；
+2. 打开 aof；
+3. 打开混合配置；（默认是打开的）
+
+![image.png](assets/image57.png)
+
+🔴 混合的过程
+
+![image.png](assets/image58.png)
+
+![image.png](assets/image.png?t=1726229888123)
+
+> - 在 aof 文件中，前半部分，就是 rdb 文件的内容，从 bgrewirteaof 之后，是 aof 文件内容；
+> - 重写就是把 RDB 的内容放到 AOF 中；
+
+
+## 3. 关于对 redis 执久化处理的建议
+
+- 【    /    】 如果数据在服务器运行的时候，使用 redis 做缓冲，可以不使用任何持久化方式；
+- 【rdb & aof】 数据不能丢失，rdb 和 aof 混合使用是一个好的选择；
+- 【   rdb   】 如果数据不要求非常严格，可以允许分钟级别丢失，可以使用 rdb；
+- 【   aof   】 如果只使用 AOF，建议配置策略是 everysec，在可靠性和性能之间做了一个折中；
+- 如果磁盘允许，尽量避免 AOF 重写的频率；
+
+对比：:heart:
+
+> AOF:
+>
+> - 数据不易丢失：AOF 可以记录所有的写操作，即使 Redis 崩溃，也可以通过重放 AOF 文件来恢复数据，理论上数据丢失的可能性很小；
+> - 恢复速度慢: AOF 文件记录了所有的写操作，因此文件体积通常较大，这可能导致读取速度变慢和占用更多的磁盘空间 I/O；
+>
+> RDB:
+>
+> - 数据安全性低：如果 Redis 在两次快照之间崩溃，那么这段时间内的数据将会丢失；
+> - 恢复速度快：DB 文件通常较小，当 Redis 重启时，加载 RDB 文件恢复数据的速度较快；相较于 AOF 文件，通常体积更小；不太占用磁盘 I/O；
+
+
+
+
+
 
 
 
