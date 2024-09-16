@@ -589,7 +589,7 @@ Redis 根据数据库现有数据，创建一个新的 AOF 文件，读取数据
 > - 但是在服务器宕机到恢复的这段时间，新来的请求如何处理？也就是如何保证服务器少服务少中断，提高服务的可用性；
 > - redis 提高可用性的方式，增加副本（集群方案）；
 
-![image.png](assets/image73.png?t=1726319203051)
+![image.png](assets/image73.png?t=1726468291100)
 
 ## 1. 主从复制
 
@@ -723,6 +723,247 @@ dbfilename dump6379.rdb
 > 缓冲空间大小 = 主库写入速度 * 操作大小 - 主从库网络传输速度 * 操作大小
 >
 > repl-backlog-size = 缓冲空间大小 * 2
+
+## 2. 哨兵模式
+
+> 主从复制模式，解决了从节点宕机后读数据的问题；但是并没有解决主节点宕机无法写数据的问题；（主节点读写，从节点只读）
+
+哨兵模式：当主库宕机，在从库中选择一个，切换为主库。
+
+问题：
+
+> 1. 主库是否真正宕机?
+> 2. 哪一个从库可以作为主库使用?
+> 3. 如何实现将新的主库的信息通知给从库和客户端?
+
+### （1）基本流程
+
+> 哨兵主要任务：
+>
+> - 监控：周期性 ping 主/从节点
+>   - 从库：当前 sentinel 节点指定时间内未收到从库应答，则认为主客观都下线；
+>   - 主库：当前 sentinel 节点指定时间内未收到主库应答，则认为主库主观下线，当大部分 sentinel 节点都主观认为主库下线，则主库变为客观下线；此时需要重新选择主库；
+> - 选择主库
+>   - 筛选：筛掉一些宕机和网络差的节点；
+>   - 打分：三轮打分选择分数最高，优先级、与主库同步程度、id值；
+> - 通知
+
+### （2）哨兵模式配置
+
+1. 新建配置文件：`vim sentinel.conf`，编辑并保存如下内容：
+
+```ini
+# 配置哨兵端口
+port 26379
+# 配置监控的猪节点地址 1 表示只要有一个哨兵主观认为主节点下线，则主节点就客观下线
+# sentinel monitor <自定义的reids主节点名称> <IP> <port> <数量>
+sentinel monitor mymaster 127.0.0.1 6379 1
+# 配置主观认为主节点下线的等待时间，单位 毫秒
+sentinel down-after-milliseconds mymaster 30000
+```
+
+2. 启动三个 redis 实例，配置成一主二从模式；
+
+   ![image.png](assets/image77.png)
+3. 启动哨兵：`redis-sentinel sentinel.conf`
+
+![image.png](assets/image78.png)
+
+4. 将主节点宕机，观察哨兵监控信息变化；
+
+> 将一个从库 6380，切换成主库，将 6381，切换成 6379 的从库；
+
+![image.png](assets/image79.png)
+
+5. 将主节点再次上线，观察哨兵监控信息变化；
+
+> 原来主库 6379 再次启动，6379 切换成 6380 的从库；
+
+![image.png](assets/image80.png)
+
+#### ❤️ 主节点切换的实现方式：自动重写 redis 实例配置文件
+
+![image.png](assets/image81.png)
+
+### （3）选主流程 ❤️
+
+> 筛选 + 打分机制，来实现新主库的选定
+
+1. 筛选：筛选掉一些宕机的和网络不好的节点，剩下的节点作为备选进行打分；
+2. 打分：三轮打分
+
+- 第一轮：优先级
+  - 通过 replica-priority 配置项，给不同的从库设置优先级，可以将内存大，网络好，配置高的从库优先级设置更高；
+- 第二轮：和原主库同步程度；
+  - 选择和原主库 repl_backlog_buffer （环形缓冲区）中的位置最接近的，做为分数最高；
+- 第三轮：ID 号小的从库得分高，每一个 redis 实例都有一个id；
+
+![image.png](assets/image82.png)
+
+### （4）哨兵集群
+
+> - 采用多个哨兵，组成一个集群，以少数服从多数的原则，来判断主库是否已客观下线：（防止单个哨兵产生较大误判概率）；
+> - 多数一般指 n/2 + 1；（向下取整）
+> - 如果集群中，有哨兵实例掉线，其他的哨兵还可以继续协作，来完成主从库监控和切换的工作；
+
+#### a. 部署
+
+模式：redis 实例一主二从，sentinel 实例三个节点集群；
+
+1. 创建了一个目录 mysentinel；
+2. 分别创建三个哨兵配置文件
+
+> - sentinel26379.conf
+> - sentinel26380.conf
+> - sentinel26381.conf
+
+配置如下：
+
+> `sentinel down-after-milliseconds mymaster 30000`，每个哨兵等待时间要配置一致，否则达不成一致选库切换；:star:
+
+```ini
+port 26381
+sentinel monitor mymaster 127.0.0.1 6379 2
+```
+
+```ini
+port 26380
+sentinel monitor mymaster 127.0.0.1 6379 2
+```
+
+```ini
+port 26379
+sentinel monitor mymaster 127.0.0.1 6379 2
+```
+
+3. 再次配置一主二从 reedis 实例；
+4. 启动三个 redis 实例，配置成一主二从，6379是主库；
+5. 依次启动三个哨兵实例，主库宕机，发现主库下线后，选举新的从库做为主库；
+
+![image.png](assets/image83.png)
+
+#### b. 运行机制
+
+> - 基于 pub/sub，即 发布/订阅 机制实现哨兵集群组成；
+> - 基于 info 命令实现哨兵监控从库；
+> - 基于自身的 pub/sub，实现哨兵与客户端之间的通知（主库切换）；
+
+##### 发布 / 订阅 ❤️
+
+- 订阅：`subscrie channel [channel1...]`
+- 发布：`publis channel <message>`
+
+> 订阅一个或多个频道，一旦频道上有消息发布，订阅了这个频道的用户都可以收到信息；
+>
+> ![image.png](assets/image84.png)
+
+![image.png](assets/image85.png)
+
+结构图：
+
+![image.png](assets/image.88png)
+
+## 3. 分片集群
+
+> 业务场景，需要存储 50G 的数据，但是内存和硬盘配置不足时，选用两种方式解决：
+>
+> - 纵向扩展：加内存，加硬盘，提高CPU；
+>   - 简单、直接；RDB存储效率要考虑，成本要考虑
+> - 横向扩展：加实例；:star:
+
+### （1）分片集群配置
+
+配置成一主一从的三个分片：
+
+![image.png](assets/image90.png)
+
+1. 创建文件夹`mkdir mycluster`，在 /mycluster 目录下配置 6 个配置文件；
+2. 从 /redis-6.2.6 目录下，将默认配置文件 redis.conf 复制到 /mycluster 目录下，并打开后台启动 `daemonize yes`；
+3. 配置 6 个配置文件：
+
+> redis6379.conf / redis6380.conf / redis6479.conf / redis6480.conf / redis6579.conf / redis6580.conf
+
+![image.png](assets/image92.png)
+
+> vim编辑器下，替换内容命令：`:%s/原内容/替换内容`
+>
+> ```ini
+> :%s/6379/6380
+> ```
+
+```ini
+include redis-base.conf
+pidfile "/var/run/redis_6379.pid"
+port 6379
+dbfilename "dump6379.rdb"
+# 打开集群配置 
+cluster-enabled yes
+# 设定节点配置文件
+cluster-config-file nodes-6379.conf
+# 设置节点失联时间
+cluster-node-timeout 15000
+```
+
+4. 修改 redis-base.conf 配置文件，将 bind ip 地址加入（加入本机IP地址），172.20.255.51
+
+> 这里不适用本地环回地址 127.0.0.1 是因为，本地环回地址的数据包不会离开本机，因此不能在网络中的其他节点间传递。本地环回地址的设计目的是为了本地测试和调试，而不是为了支持分布式系统或集群环境下的节点间通信。因此，在配置集群时，应该使用实际的网络接口地址，确保各个节点能够互相识别并建立有效的通信链路。:star:
+
+![image.png](assets/image89.png)
+
+5. 启动这 6 个 redis 实例，并保证启动成功；
+
+![image.png](assets/image91.png)
+
+6. 将 6 个 redis 实例合成一个集群；
+
+```bash
+redis-cli --cluster create <node1-ip>:<node1-port> <node2-ip>:<node2-port> ... <nodeN-ip>:<nodeN-port> --cluster-replicas <replicas-count>
+```
+
+```bash
+   redis-cli --cluster create \
+     172.20.255.51:6379 \
+     172.20.255.51:6380 \
+     172.20.255.51:6479 \
+     172.20.255.51:6480 \
+     172.20.255.51:6579 \
+     172.20.255.51:6580 \
+     --cluster-replicas 1
+```
+
+> 其中 `--cluster-replicas 1` 表示每个主节点拥有一个从节点
+
+![image.png](assets/image93.png)
+
+### （2）Hash Slot 哈希槽
+
+在使用 redis cluster 方案中，一个分片集群有 16384 个哈希槽，哈希槽表示数据分区；
+
+```bash
+Master[0] -> Slots 0 - 5460
+Master[1] -> Slots 5461 - 10922
+Master[2] -> Slots 10923 - 16383
+```
+
+> - 划分方法：16384 / n；其中 n 是有 n 个分片；
+> - 数据存在哪个分片上是通过键值对的 key 按照 CRC16 算法计算一个 16bit 的值；
+> - 再用这个值对 16384 取模运算，得到的数代表对应编号的 hash slot；
+> - hash16 % 16384 [0-16383]，落在上述哪个区间，就在哪个分片；
+
+❤️【hash slot 分配方案】：
+
+- cluster create 命令创建集群时，redis 会自动把这些 hash slot 平均分布在集群实例上。如果集群中有 N 个实例(主库)，每个实例上分配到的 hash slot 就是 16384/N；
+- 使用 cluster addslos 手工分配哈希槽；
+
+### （3）数据操作
+
+
+
+
+
+
+
+
 
 
 
