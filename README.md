@@ -935,6 +935,16 @@ redis-cli --cluster create <node1-ip>:<node1-port> <node2-ip>:<node2-port> ... <
 
 ![image.png](assets/image93.png)
 
+> 注意：下面分配结果与上面不是同一次启动的结果，后续以下面为准；
+
+![image.png](assets/image96.png)
+
+> 6379->6580
+>
+> 6380->6480
+>
+> 6479->6579
+
 ### （2）Hash Slot 哈希槽
 
 在使用 redis cluster 方案中，一个分片集群有 16384 个哈希槽，哈希槽表示数据分区；
@@ -957,10 +967,206 @@ Master[2] -> Slots 10923 - 16383
 
 ### （3）数据操作
 
+1. 集群方式启动命令行工具：`redis-cli -c -p 6379`，加 -c 参数；
+2. 向 redis 中设置一个键值对，key 会经过运算后，得到相应的 hash slot 进行存储；
 
+![image.png](assets/image.07png)
 
+3. 一次设置多个键值对，向集群中加入多个 key-value，由于在不同的 hash slot，此时会报错；要通过`{}`来定义组的概念，使用 key 中`{}`内相同内容的键值对放在一个 slot 中；
 
+![image.png](assets/image98.png)
 
+4. 取值：`get k1` / `get name{user:001}`
+
+![image.png](assets/image99.png)
+
+### （4）常用命令
+
+> redis-cli 命令行环境运行
+
+- cluster nodes：显示集群节点的配置信息；
+
+![image.png](assets/image100.png)
+
+> 6379->6580
+>
+> 6380->6480
+>
+> 6479->6579
+
+- cluster keyslot < key>：获取 key 的哈希槽；
+
+![image.png](assets/image101.png)
+
+- cluster countkeysinslot < slot>：返回当前哈希槽中 key 的数量（仅查询当前 redis 实例所连接的 hash slot 范围）；
+
+![image.png](assets/image102.png)
+
+- cluster getkeysinslot < slot> < count>：返回当前槽中指定的 count 数量的 key；
+
+![image.png](assets/image103.png)
+
+### （5）故障演示
+
+【挂掉一个 master 并重新启动】
+
+1. 将 6379 宕机，以集群方式登录 6580；
+2. 使用 cluster nodes 查看节点状态，6379 的 slave 6580 变成了 master；
+3. 把 6379 再次启动，启动后，6379 变成了 6580 的 salve；
+
+![image.png](assets/image104.png)
+
+![image.png](assets/image105.png)
+
+【挂掉一个分片】
+
+> 如果有一段 hash slot 的主从节点都宕机（挂掉一个分片），redis 分片集群是否继续工作？
+
+默认情况下是不工作的，可以通过配置 redis.conf 文件，设置当一个分片挂掉后，即其分管的 hash slot 失效后，其余分片继续工作；
+
+> 将 cluster-require-full-coverage 配置项设置为 no；通过下面配置，默认是yes，如果主从都挂掉，整个集群就都挂掉如果是no，就表示该 hash slo t数据全部都不能使用，也无法存储；
+
+![image.png](assets/image106.png)
+
+## 4. 亿级数据访问处理 ❤️
+
+### （1）场景描述
+
+> - 手机 APP 用户登录信息，一天用户登录 ID 或设备 ID；
+> - 电商或者美团平台，一个商品对应的评论；
+>   - 商品评论的排序
+> - 文章对应的评论；
+> - APP 上有打卡信息；
+>   - 月活统计
+> - 网站上访问量统计；
+>   - 统计独立访客(Unique Vistitor UV)
+> - 统计新增用户第二天还留存的；
+>
+> 上述都是大数据量访问（亿级、千/百万级）
+
+### （2）集合的统计模式
+
+> 四种统计模式：聚合统计、排序统计、二值状态统计、基数统计；
+
+#### a. 聚合统计
+
+Set：统计多个集合的交集、差集、并集：
+
+> - set集合，来存储所有登录系统的用户 `user:id`；
+> - set集合，来存储当日新增用户信息 `user:id:20240918`；
+
+1. 假设系统是2024年09月18日上线，统计当天用户：`sadd user:id:202409181001 1002 1003 1004 1005`；
+2. 统计总用户量：`sunionstore user:id user:id user:id:20240918`
+3. 第2天09月19日上线用户：`sadd user:id:20240919 1001 1003 1006 1007`；
+4. 统计当日新增用户：`sdiffstore user:new user:id:20240919 user:id`；
+5. 统计第一天登录，第二天还在的用户：`sinterstore user:save user:id:20240918 user:id:20240919`；
+6. 统计第一天登录，第二天流失的用户：`sdiffstore user:rem user:id:20240918 user:id:20240919`
+
+#### b. 排序统计
+
+List、Set、Hash、ZSet 四种集合中，List 和 Zset 是属于有序的集合；
+
+- 一种使用 List，通过 lpush 加入；
+- 一种使用 Zset，按分数权重处理；
+
+> 具体使用见第二章
+
+#### c. 二值状态统计 - bitmap ❤️
+
+> - Redis 的 Bitmap 可以非常大，理论上可以达到 512 MB，但实际上根据应用的需求，通常会控制在一个合理的范围内，以避免不必要的内存消耗和性能问题；
+> - Redis 的 Bitmap优势： ⭐️
+>   - 采用二进制位级存储，极大节省内存；
+>   - 且位操作高效；
+>   - 位操作通常是原子性的，适用于高并发场景；
+> - 应用场景如：用户状态跟踪、统计分析、权限管理等
+
+- 统计统计疫苗接种人数、打卡、签到等只有两种状态的场景；
+- redis 提供了一种扩展的数据类型 bitmap （位图）；
+- 可以把 bitmap 看为是一个 bit 数组，默认值是0；
+- 常用命令：
+  - setbit < key> < offset> < value>：在下标 offset 处设置值，offset 相当于 bit 数组的下标，从 0 开始；（每一个下标都是一个bit）
+  - getbit < key> < offset>：获取下标 offset 处的值；
+  - bitcount < key> [start end]：统计下标 [start end] 区间（以字节为单位的，1byte=8bit）的值；
+  - bitop < operaion> < key> < key1> [< key2>...]：对 key1,key2...的操作 operaion，并将结果保存在 key；
+    - 其中 operaion 可以是 and等，可以按位与/或；
+- 例如：统计一下，2024年9月份的一个上班打卡情况；
+
+![image.png](assets/image1055.png)
+
+![image.png](assets/image107.png)
+
+#### d. 基数统计 - HyperLogLog (hll)
+
+统计一个集合中不重复的元素个数，例如统计网页的 UV（独立访客）；
+
+- 第一种：使用 set 或者 hash 来完成统计；
+  - sadd page1:uv u1001 u1002 u1003
+    scard page1:uv
+  - 存在的问题：如果数据量非常大，且页面多，访问人数非常多，造成内存紧张；
+- 第二种：HyperLogLog 是用于统计基数的一种数据集合类型；
+  - HyperlogLog 是用于统计基数的一种数据集合类型。
+    - 优点在于当集合元素非常多，使用 hll 所需要的空间是固定目很小，使用12kb内存，可以存储2^64个元素的基数；
+    - 缺点在于统计规则是基于概率完成的，会有 0.81% 左右的误差；如果统计1000万次，实际上可以是1100万或900万人；
+  - 常用命令:
+    - pfadd page1:uv u1001 u1002 u1003
+      pfcount page1:uv
+      pfadd page2:uv u1001 u1004
+      pfmerge page:uv page1:uv page2:uv
+      pfcount page:uv
+
+#### 总结：
+
+![image.png](assets/image110.png)
+
+# 五、Geospatial 地理空间
+
+#### 简介
+
+> 在 Redis 中，Geospatial 数据结构是一种非常强大的功能，用于存储和查询地理位置信息。它允许你高效地存储和检索地理坐标，并执行各种地理空间查询，如距离范围查询、最近邻查询等
+
+- 基于位置信息服务(Location-Based Service,LBS)的应用，Redis3.2 版本后增加了对 GEO 类型的支持；
+- 主要来维护元素的经纬度；
+- redis 基于这种类型，提供了经纬度设置、查询、范围查询、距离查询、经纬度 hash 等一些相关操作；
+
+## 1. GEO 的底层结构
+
+> 场景：
+>
+> 1. 约车系统，针对每一辆车，有一个唯一编号，车辆有行驶的经纬度；
+> 2. 呼叫车辆，会暴露用户的经纬度，根据经纬度进行范围查找，进行匹配；
+> 3. 把附近车辆找到后，车辆信息获取，将信息反馈给用户；
+
+1️⃣ GEO 的底层结构是使用 zset 实现的，需要将经纬度放在一起，生成一个权重的分数（GEOHash 编码），按这个分数进行排序；\
+
+2️⃣ GEOHash 编码；:star:
+
+![image.png](assets/image111.png)
+
+![image.png](assets/image112.png)
+
+> - 经度: 11010
+> - 纬度: 10111
+>
+> 最后合成的编码: 1110011101 (是经纬度每次交替顺序取一位的结果，或者说是交叉合并的结果)；
+>
+> 就可以将最后合成的编码作为 zset 存储的权重；
+
+![image.png](assets/image113.png)
+
+## 2. GEO 操作命令
+
+> 经纬度坐标拾取：https://api.map.baidu.com/lbsapi/getpoint/index.html
+
+- geoadd < key> < longitude> < latitude> < member> [longitude latitude member..]：添加地理位置(经度 纬度 名称)；
+- geopos < key> < member> [member...]：获取指定的位置坐标值；
+- geodist < key> < member1> < member2> [m|km|fm|mi]：获取两个位置之间的直线距离，单位：m 米 km 千米 ft英尺 m英尺；
+- georadius < key> < longitude> < latitue> radius [m|km|fm|mi]：以指定的经纬度做为中心，找出给定半径内的位置；
+
+![image.png](assets/image116.png)
+
+![image.png](assets/image117.png)
+
+# 六、Redis 事务操作
 
 
 
