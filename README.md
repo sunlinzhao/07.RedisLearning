@@ -1482,7 +1482,6 @@ redis.delCache()
 >   - 灾难预警：监控 redis 服务器性能指标，包括数据库服务器性能指标，CPU、内存、平均响应时间、线程数等；
 >   - 集群：一有节点出故障，主从切换；
 
-
 ### （3）缓存击穿
 
 简介：
@@ -1515,20 +1514,311 @@ redis.delCache()
 > - 实时监控；
 > - key 加密；
 
+# 八、jedis 操作
 
+## 1. 准备工作
 
+1. 创建 Maven 工程，引入依赖 lombok、logback、jedis
 
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
 
+    <groupId>com.slz.redis.demo</groupId>
+    <artifactId>redis-demo</artifactId>
+    <version>1.0-SNAPSHOT</version>
 
+    <properties>
+        <maven.compiler.source>11</maven.compiler.source>
+        <maven.compiler.target>11</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+    <dependencies>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <version>1.18.22</version>
+        </dependency>
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+            <version>1.2.7</version>
+        </dependency>
+        <dependency>
+            <groupId>redis.clients</groupId>
+            <artifactId>jedis</artifactId>
+            <version>4.0.1</version>
+        </dependency>
+    </dependencies>
+</project>
+```
 
+2. 配置 logback 用到的 xml 文件 logback.xml；
 
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration
+        xmlns="http://ch.qos.logback/xml/ns/logback"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://ch.qos.logback/xml/ns/logback logback.xsd">
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%date{HH:mm:ss.SSS} %c [%t] - %m%n</pattern>
+        </encoder>
+    </appender>
+    <logger name="c" level="debug" additivity="false">
+        <appender-ref ref="STDOUT"/>
+    </logger>
+    <root level="ERROR">
+        <appender-ref ref="STDOUT"/>
+    </root>
+</configuration>
+```
 
+3. 修改 redis.conf 配置文件，加入服务器内网 IP 地址；(注意是绑定内网 IP，调用时通过公网 IP 访问)
 
+```ini
+bind 172.20.255.51 127.0.0.1 -::1
+```
 
+4. 修改 redis.conf 配置文件，将文件保护模式修改，原有默认值是 yes，改成 no；
 
+```ini
+# By default protected mode is enabled. You should disable it only if
+# you are sure you want clients from other hosts to connect to Redis
+# even if no authentication is configured, nor a specific set of interfaces
+# are explicitly listed using the "bind" directive.
+protected-mode no
+```
 
+5. 查看一下 linux 防火墙状态，开放相应端口 6379；
+6. 编写 Java 程序测试连接；
 
+```java
+@Slf4j(topic = "c.TestConnection")
+public class TestConnection {
+    public static void main(String[] args) {
+        String ping;
+        try (Jedis jedis = new Jedis("8.130.102.188", 6379)) {
+            ping = jedis.ping();
+        }
+        log.debug(ping);
+    }
+}
+```
 
+```log
+12:44:47.498 c.TestConnection [main] - PONG
+```
 
+## 2. 操作各种数据类型
 
-++++++++++++++++++
+### （1）String
+
+```java
+@Slf4j(topic = "c.TestString")
+public class TestString {
+    public static void main(String[] args) {
+        try (Jedis jedis = new Jedis("8.130.102.188", 6379)) {
+            String set = jedis.set("k2", "v2");
+            log.debug(set);
+            String k2 = jedis.get("k2");
+            log.debug(k2);
+            String mset = jedis.mset("k3", "v3", "k4", "v4");
+            log.debug(mset);
+            List<String> mget = jedis.mget("k1", "k2", "k3");
+            log.debug(mget.toString());
+            String setex = jedis.setex("kk", 30, "vv");
+            log.debug(setex);
+            TimeUnit.SECONDS.sleep(5);
+            long ttl = jedis.ttl("kk");
+            log.debug(String.valueOf(ttl));
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+    }
+}
+```
+
+### （2）List
+
+```java
+@Slf4j(topic = "c.TestList")
+public class TestList {
+    public static void main(String[] args) {
+        try (Jedis jedis = new Jedis("8.130.102.188", 6379)) {
+            long lpush = jedis.lpush("list1", "a", "b", "c", "d", "e");
+            log.debug(String.valueOf(lpush));
+            List<String> list1 = jedis.lpop("list1", 2);
+            log.debug(list1.toString());
+            List<String> list11 = jedis.lrange("list1", 0, 1);
+            log.debug(list11.toString());
+        }
+    }
+}
+```
+
+### （3）Hsah
+
+```java
+@Slf4j(topic = "c.TestHash")
+public class TestHash {
+    public static void main(String[] args) {
+        try (Jedis jedis = new Jedis("8.130.102.188", 6379)) {
+            long hset1 = jedis.hset("user:001", "name", "zhangsan");
+            long hset2 = jedis.hset("user:001", "age", "22");
+            long hset3 = jedis.hset("user:001", "gender", "female");
+            log.debug("" + hset1 + " " + hset2 + " " + hset3);
+            String name = jedis.hget("user:001", "name");
+            Map<String, String> map = jedis.hgetAll("user:001");
+            log.debug(map.toString());
+            Map<String, String> m = new HashMap<>();
+            m.put("name", "xiaoming");
+            m.put("age", "25");
+            long hset = jedis.hset("stu:001", m);
+            log.debug(String.valueOf(hset));
+        }
+    }
+}
+```
+
+### （4）Set
+
+```java
+@Slf4j(topic = "c.TestSet")
+public class TestSet {
+    public static void main(String[] args) {
+        try (Jedis jedis = new Jedis("8.130.102.188", 6379)) {
+            long sadd = jedis.sadd("myset", "a", "b", "a", "c", "d");
+            log.debug(String.valueOf(sadd));
+            Set<String> myset = jedis.smembers("myset");
+            log.debug(myset.toString());
+            long myset1 = jedis.scard("myset");
+            log.debug(String.valueOf(myset1));
+            long srem = jedis.srem("myset", "a");
+            log.debug(String.valueOf(srem));
+            String myset2 = jedis.spop("myset");
+            log.debug(myset2);
+
+            long sadd1 = jedis.sadd("myset2", "c", "c", "f", "g");
+            log.debug(String.valueOf(sadd1));
+            long sunionstore = jedis.sunionstore("union_set", "myset", "myset2");
+            log.debug(String.valueOf(sunionstore));
+        }
+    }
+}
+
+```
+
+### （5）ZSet
+
+```java
+@Slf4j(topic = "c.TestZSet")
+public class TestZSet {
+    public static void main(String[] args) {
+        Jedis jedis = new Jedis("8.130.102.188", 6379);
+        jedis.zadd("z1", 1, "a");
+        jedis.zadd("z1", 2, "b");
+        jedis.zadd("z1", 3, "c");
+
+        Map<String, Double> m = new HashMap<>();
+        m.put("c", 4.0);
+        m.put("a",5.0);
+        m.put("d",6.0);
+        m.put("f", 7.0);
+        jedis.zadd("z2",m);
+
+        List<String> z2 = jedis.zrange("z2", 0, -1);
+        log.debug(z2.toString());
+        List<String> z21 = jedis.zrevrange("z2", 0, -1);
+        log.debug(z21.toString());
+
+        Set<String> zdiff1 = jedis.zdiff("z1", "z2");
+        log.debug(zdiff1.toString());
+        Set<String> zdiff2 = jedis.zdiff("z2", "z1");
+        log.debug(zdiff2.toString());
+
+        zdiff1.addAll(zdiff2);
+        log.debug(zdiff1.toString());
+
+        Long z22 = jedis.zrank("z2", "f"); // 返回索引位置
+        log.debug(z22.toString());
+    }
+}
+```
+
+### （6）Geo
+
+```java
+@Slf4j(topic = "c.TestGeo")
+public class TestGeo {
+    public static void main(String[] args) {
+        try (Jedis jedis = new Jedis("8.130.102.188", 6379)) {
+            long loc1 = jedis.geoadd("geo:beijing", 116.417492, 39.911836, "gugong");
+            long loc2 = jedis.geoadd("geo:beijing", 116.466935, 39.960963, "bridge");
+            long loc3 = jedis.geoadd("geo:beijing", 116.216846, 39.91405, "mountain");
+
+            Double geodist = jedis.geodist("geo:beijing", "gugong", "mountain", GeoUnit.KM);
+            log.debug(geodist.toString());
+
+            List<GeoRadiusResponse> georadius = jedis.georadius("geo:beijing", 116.417492, 39.911836, 2, GeoUnit.KM);
+            georadius.forEach(g->{
+                System.out.println(g.getMemberByString());
+            });
+
+            List<GeoCoordinate> geopos = jedis.geopos("geo:beijing", "gugong", "bridge", "mountain");
+            geopos.forEach(g->{
+                System.out.println(g.toString());
+            });
+        }
+    }
+}
+```
+
+## 3. 应用案例
+
+> 需求：用户使用银行 APP 登录，要求动态发送手机验证码，验证码设定 5 分钟有效，1 天内最多发送 3 次；
+
+```java
+@Slf4j(topic = "c.TestApp")
+public class TestApp {
+    public static void main(String[] args) {
+        Jedis jedis = new Jedis("8.130.102.188", 6379);
+        send(jedis, "10010");
+    }
+
+    public static void send(Jedis jedis, String phone){
+        String count_key = "v:" + phone + ":count"; // 当前手机号已发送次数
+        String code_key = "v:" + phone + ":code"; // 当前手机号已收到的验证码
+        String s = jedis.get(count_key); // 获取当前手机号已发送次数
+        if(s==null){
+            // 如果没有获取，即s==null，就表时该key不存在，第一次设置，有效时间为1天
+            jedis.setex(count_key, 60*60*24, "1");
+        } else if (Integer.parseInt(s)<3) { // 如果不到3次，可以为用户发送，每发送一次，记数增加1
+            jedis.incr(count_key);
+
+        } else {
+            log.debug("今日已经请求3次，请24小时后再试");
+            jedis.close();
+            return;
+        }
+        String code = getCode();
+        jedis.setex(code_key, 60*5, code); // 发送验证码，进行保存，设置过期时间
+        log.debug("向" + phone + "发送成功", code);
+        jedis.close();
+    }
+
+    public static String getCode(){
+        String pattern = "0123456789";
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < 6; i++) {
+            sb.append(pattern.charAt((int)(Math.random()*pattern.length())));
+        }
+        return sb.toString();
+//        return new DecimalFormat("000000").format(new Random().nextInt(100000));
+    }
+}
+```
