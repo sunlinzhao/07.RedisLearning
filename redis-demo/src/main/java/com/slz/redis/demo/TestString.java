@@ -15,7 +15,7 @@ import java.util.concurrent.TimeUnit;
 @Slf4j(topic = "c.TestString")
 public class TestString {
     public static void main(String[] args) {
-        try (Jedis jedis = new Jedis("8.130.102.188", 6379)) {
+        try (Jedis jedis = new Jedis("localhost", 6379)) {
             String set = jedis.set("k2", "v2");
             log.debug(set);
             String k2 = jedis.get("k2");

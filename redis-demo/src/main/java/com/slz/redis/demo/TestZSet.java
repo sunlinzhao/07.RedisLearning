@@ -16,7 +16,7 @@ import java.util.Set;
 @Slf4j(topic = "c.TestZSet")
 public class TestZSet {
     public static void main(String[] args) {
-        Jedis jedis = new Jedis("8.130.102.188", 6379);
+        Jedis jedis = new Jedis("localhost", 6379);
         jedis.zadd("z1", 1, "a");
         jedis.zadd("z1", 2, "b");
         jedis.zadd("z1", 3, "c");

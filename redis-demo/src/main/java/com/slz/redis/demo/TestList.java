@@ -14,7 +14,7 @@ import java.util.List;
 @Slf4j(topic = "c.TestList")
 public class TestList {
     public static void main(String[] args) {
-        try (Jedis jedis = new Jedis("8.130.102.188", 6379)) {
+        try (Jedis jedis = new Jedis("localhost", 6379)) {
             long lpush = jedis.lpush("list1", "a", "b", "c", "d", "e");
             log.debug(String.valueOf(lpush));
             List<String> list1 = jedis.lpop("list1", 2);

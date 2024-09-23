@@ -13,7 +13,7 @@ import redis.clients.jedis.Jedis;
 public class TestConnection {
     public static void main(String[] args) {
         String ping;
-        try (Jedis jedis = new Jedis("8.130.102.188", 6379)) {
+        try (Jedis jedis = new Jedis("localhost", 6379)) {
             ping = jedis.ping();
         }
         log.debug(ping);

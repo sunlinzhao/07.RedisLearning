@@ -15,7 +15,7 @@ import java.util.Map;
 @Slf4j(topic = "c.TestHash")
 public class TestHash {
     public static void main(String[] args) {
-        try (Jedis jedis = new Jedis("8.130.102.188", 6379)) {
+        try (Jedis jedis = new Jedis("localhost", 6379)) {
             long hset1 = jedis.hset("user:001", "name", "zhangsan");
             long hset2 = jedis.hset("user:001", "age", "22");
             long hset3 = jedis.hset("user:001", "gender", "female");

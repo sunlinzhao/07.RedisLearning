@@ -15,7 +15,7 @@ import java.util.Random;
 @Slf4j(topic = "c.TestApp")
 public class TestApp {
     public static void main(String[] args) {
-        Jedis jedis = new Jedis("8.130.102.188", 6379);
+        Jedis jedis = new Jedis("localhost", 6379);
         send(jedis, "10010");
     }
 

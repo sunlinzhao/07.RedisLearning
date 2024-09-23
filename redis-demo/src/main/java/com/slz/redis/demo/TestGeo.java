@@ -17,7 +17,7 @@ import java.util.List;
 @Slf4j(topic = "c.TestGeo")
 public class TestGeo {
     public static void main(String[] args) {
-        try (Jedis jedis = new Jedis("8.130.102.188", 6379)) {
+        try (Jedis jedis = new Jedis("localhost", 6379)) {
             long loc1 = jedis.geoadd("geo:beijing", 116.417492, 39.911836, "gugong");
             long loc2 = jedis.geoadd("geo:beijing", 116.466935, 39.960963, "bridge");
             long loc3 = jedis.geoadd("geo:beijing", 116.216846, 39.91405, "mountain");

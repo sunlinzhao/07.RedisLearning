@@ -1602,7 +1602,7 @@ protected-mode no
 public class TestConnection {
     public static void main(String[] args) {
         String ping;
-        try (Jedis jedis = new Jedis("8.130.102.188", 6379)) {
+        try (Jedis jedis = new Jedis("localhost", 6379)) {
             ping = jedis.ping();
         }
         log.debug(ping);
@@ -1622,7 +1622,7 @@ public class TestConnection {
 @Slf4j(topic = "c.TestString")
 public class TestString {
     public static void main(String[] args) {
-        try (Jedis jedis = new Jedis("8.130.102.188", 6379)) {
+        try (Jedis jedis = new Jedis("localhost", 6379)) {
             String set = jedis.set("k2", "v2");
             log.debug(set);
             String k2 = jedis.get("k2");
@@ -1649,7 +1649,7 @@ public class TestString {
 @Slf4j(topic = "c.TestList")
 public class TestList {
     public static void main(String[] args) {
-        try (Jedis jedis = new Jedis("8.130.102.188", 6379)) {
+        try (Jedis jedis = new Jedis("localhost", 6379)) {
             long lpush = jedis.lpush("list1", "a", "b", "c", "d", "e");
             log.debug(String.valueOf(lpush));
             List<String> list1 = jedis.lpop("list1", 2);
@@ -1667,7 +1667,7 @@ public class TestList {
 @Slf4j(topic = "c.TestHash")
 public class TestHash {
     public static void main(String[] args) {
-        try (Jedis jedis = new Jedis("8.130.102.188", 6379)) {
+        try (Jedis jedis = new Jedis("localhost", 6379)) {
             long hset1 = jedis.hset("user:001", "name", "zhangsan");
             long hset2 = jedis.hset("user:001", "age", "22");
             long hset3 = jedis.hset("user:001", "gender", "female");
@@ -1691,7 +1691,7 @@ public class TestHash {
 @Slf4j(topic = "c.TestSet")
 public class TestSet {
     public static void main(String[] args) {
-        try (Jedis jedis = new Jedis("8.130.102.188", 6379)) {
+        try (Jedis jedis = new Jedis("localhost", 6379)) {
             long sadd = jedis.sadd("myset", "a", "b", "a", "c", "d");
             log.debug(String.valueOf(sadd));
             Set<String> myset = jedis.smembers("myset");
@@ -1719,7 +1719,7 @@ public class TestSet {
 @Slf4j(topic = "c.TestZSet")
 public class TestZSet {
     public static void main(String[] args) {
-        Jedis jedis = new Jedis("8.130.102.188", 6379);
+        Jedis jedis = new Jedis("localhost", 6379);
         jedis.zadd("z1", 1, "a");
         jedis.zadd("z1", 2, "b");
         jedis.zadd("z1", 3, "c");
@@ -1756,7 +1756,7 @@ public class TestZSet {
 @Slf4j(topic = "c.TestGeo")
 public class TestGeo {
     public static void main(String[] args) {
-        try (Jedis jedis = new Jedis("8.130.102.188", 6379)) {
+        try (Jedis jedis = new Jedis("localhost", 6379)) {
             long loc1 = jedis.geoadd("geo:beijing", 116.417492, 39.911836, "gugong");
             long loc2 = jedis.geoadd("geo:beijing", 116.466935, 39.960963, "bridge");
             long loc3 = jedis.geoadd("geo:beijing", 116.216846, 39.91405, "mountain");
@@ -1786,7 +1786,7 @@ public class TestGeo {
 @Slf4j(topic = "c.TestApp")
 public class TestApp {
     public static void main(String[] args) {
-        Jedis jedis = new Jedis("8.130.102.188", 6379);
+        Jedis jedis = new Jedis("localhost", 6379);
         send(jedis, "10010");
     }
 

@@ -13,7 +13,7 @@ import java.util.Set;
 @Slf4j(topic = "c.TestSet")
 public class TestSet {
     public static void main(String[] args) {
-        try (Jedis jedis = new Jedis("8.130.102.188", 6379)) {
+        try (Jedis jedis = new Jedis("localhost", 6379)) {
             long sadd = jedis.sadd("myset", "a", "b", "a", "c", "d");
             log.debug(String.valueOf(sadd));
             Set<String> myset = jedis.smembers("myset");
